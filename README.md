@@ -191,13 +191,15 @@ SmartGuard/
 ├── firmware/
 │   └── smartguard_firmware.ino
 │   └── SmartGuard_Connections.md
-├── software/
-│   ├── backend/
-│   └── dashboard/
 ├── docs/
 │   └── Schematic.png
     └──pcb.png
     └──3-D.png
+├── software/
+│   ├── backend/
+│   └── dashboard/
+
+
 └── README.md
 ```
 
