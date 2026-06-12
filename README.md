@@ -159,6 +159,17 @@ Written for Arduino IDE with ESP32-S3 support.
 
 ---
 
+## PCB Preview
+
+### Schematic
+![Schematic](docs/schematic.png)
+
+### PCB Layout
+![PCB Layout](docs/pcb.png)
+
+### 3D View
+![3D View](docs/3-D.png)
+
 ## Repository Structure
 
 ```
@@ -179,11 +190,14 @@ SmartGuard/
 │       └── SmartGuard_v1-NPTH.drl
 ├── firmware/
 │   └── smartguard_firmware.ino
+│   └── SmartGuard_Connections.md
 ├── software/
 │   ├── backend/
 │   └── dashboard/
 ├── docs/
-│   └── SmartGuard_Connections.md
+│   └── Schematic.png
+    └──pcb.png
+    └──3-D.png
 └── README.md
 ```
 
