@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SmartGuard — Railway Crowd Safety</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <style>
+    /* ── Tokens ─────────────────────────────────────────────────────────── */
+    :root {
+      --navy:      #0B1628;
+      --surface:   #111f38;
+      --card:      #162540;
+      --border:    #1e3255;
+      --muted:     #2a4470;
+      --text:      #e8edf4;
+      --dim:       #8099bb;
+      --safe:      #27AE60;
+      --warn:      #F5A623;
+      --danger:    #C0392B;
+      --accent:    #3B82F6;
+      --mono:      'JetBrains Mono', monospace;
+      --sans:      'Space Grotesk', sans-serif;
+    }
+
+    /* ── Reset ──────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: var(--navy); color: var(--text); font-family: var(--sans); font-size: 14px; }
+
+    /* ── Layout ─────────────────────────────────────────────────────────── */
+    .app {
+      display: grid;
+      grid-template-rows: 56px 1fr;
+      grid-template-columns: 1fr 320px;
+      grid-template-areas:
+        "header  header"
+        "main    sidebar";
+      height: 100vh;
+      gap: 0;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────────── */
+    header {
+      grid-area: header;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 24px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 16px;
+      letter-spacing: -0.3px;
+      white-space: nowrap;
+    }
+
+    .logo-icon {
+      width: 28px;
+      height: 28px;
+    }
+
+    .logo-badge {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      color: var(--warn);
+      background: rgba(245,166,35,0.12);
+      border: 1px solid rgba(245,166,35,0.3);
+      padding: 2px 6px;
+      border-radius: 3px;
+      text-transform: uppercase;
+    }
+
+    .header-stats {
+      display: flex;
+      gap: 2px;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    .hstat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 4px 16px;
+      border-left: 1px solid var(--border);
+    }
+
+    .hstat:first-child { border-left: none; }
+
+    .hstat-val {
+      font-family: var(--mono);
+      font-size: 18px;
+      font-weight: 600;
+      line-height: 1;
+    }
+
+    .hstat-label {
+      font-size: 10px;
+      color: var(--dim);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-top: 3px;
+    }
+
+    .live-dot {
+      width: 7px;
+      height: 7px;
+      background: var(--safe);
+      border-radius: 50%;
+      box-shadow: 0 0 0 0 rgba(39,174,96,0.6);
+      animation: pulse-dot 2s infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes pulse-dot {
+      0%   { box-shadow: 0 0 0 0   rgba(39,174,96,0.6); }
+      70%  { box-shadow: 0 0 0 8px rgba(39,174,96,0);   }
+      100% { box-shadow: 0 0 0 0   rgba(39,174,96,0);   }
+    }
+
+    .live-label {
+      font-size: 11px;
+      color: var(--safe);
+      letter-spacing: 1px;
+      font-weight: 600;
+    }
+
+    /* ── Main ───────────────────────────────────────────────────────────── */
+    main {
+      grid-area: main;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* ── Station Map ────────────────────────────────────────────────────── */
+    .map-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .card-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--dim);
+    }
+
+    #station-map {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    /* ── Zone Cards Grid ────────────────────────────────────────────────── */
+    .zones-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+    }
+
+    .zone-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.3s;
+    }
+
+    .zone-card::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 3px;
+      background: var(--level-color, var(--safe));
+      transition: background 0.3s;
+    }
+
+    .zone-card.safe    { --level-color: var(--safe);   }
+    .zone-card.warning { --level-color: var(--warn);   border-color: rgba(245,166,35,0.35); }
+    .zone-card.danger  { --level-color: var(--danger); border-color: rgba(192,57,43,0.45); animation: danger-pulse 1.8s infinite; }
+
+    @keyframes danger-pulse {
+      0%, 100% { border-color: rgba(192,57,43,0.45); }
+      50%       { border-color: rgba(192,57,43,0.9);  }
+    }
+
+    .zone-name {
+      font-size: 11px;
+      color: var(--dim);
+      margin-bottom: 6px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .zone-count {
+      font-family: var(--mono);
+      font-size: 28px;
+      font-weight: 600;
+      line-height: 1;
+      color: var(--level-color, var(--safe));
+    }
+
+    .zone-capacity {
+      font-size: 11px;
+      color: var(--dim);
+      margin-top: 2px;
+    }
+
+    .zone-bar-wrap {
+      margin-top: 10px;
+      height: 4px;
+      background: var(--muted);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .zone-bar {
+      height: 100%;
+      background: var(--level-color, var(--safe));
+      border-radius: 2px;
+      transition: width 0.6s ease;
+    }
+
+    .zone-eta {
+      margin-top: 6px;
+      font-size: 10px;
+      color: var(--warn);
+      font-family: var(--mono);
+    }
+
+    /* tiny sparkline canvas */
+    .zone-spark {
+      margin-top: 8px;
+    }
+
+    /* ── Prediction Chart ───────────────────────────────────────────────── */
+    .chart-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+
+    .zone-select {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .chart-wrap { position: relative; height: 180px; }
+
+    /* ── Sidebar ─────────────────────────────────────────────────────────── */
+    aside {
+      grid-area: sidebar;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .sidebar-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--dim);
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .alert-count-badge {
+      background: var(--danger);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 10px;
+      font-family: var(--mono);
+    }
+
+    .alerts-feed {
+      overflow-y: auto;
+      flex: 1;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .alert-item {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--level-color, var(--safe));
+      border-radius: 6px;
+      padding: 10px 12px;
+      animation: slide-in 0.25s ease;
+    }
+
+    .alert-item.warning { --level-color: var(--warn); }
+    .alert-item.danger  { --level-color: var(--danger); }
+
+    @keyframes slide-in {
+      from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .alert-meta {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    .alert-zone {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--level-color, var(--safe));
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .alert-time {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--dim);
+    }
+
+    .alert-msg {
+      font-size: 11px;
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    /* ── Kavach Badge (bottom of sidebar) ──────────────────────────────── */
+    .kavach-badge {
+      margin: 8px;
+      padding: 12px;
+      background: rgba(59,130,246,0.08);
+      border: 1px solid rgba(59,130,246,0.25);
+      border-radius: 8px;
+      flex-shrink: 0;
+    }
+
+    .kavach-label {
+      font-size: 9px;
+      letter-spacing: 1.2px;
+      color: var(--accent);
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .kavach-text {
+      font-size: 10px;
+      color: var(--dim);
+      line-height: 1.6;
+    }
+
+    /* ── Scrollbar ───────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo">
+      <svg class="logo-icon" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="28" height="28" rx="6" fill="#1e3255"/>
+        <path d="M6 20 L14 8 L22 20" stroke="#F5A623" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="14" cy="8" r="2" fill="#F5A623"/>
+        <rect x="9" y="17" width="10" height="3" rx="1" fill="#3B82F6" opacity="0.7"/>
+      </svg>
+      SmartGuard
+      <span class="logo-badge">Live</span>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:8px;margin-left:16px">
+      <div class="live-dot"></div>
+      <span class="live-label">SYSTEM ACTIVE</span>
+    </div>
+
+    <div class="header-stats" id="header-stats">
+      <div class="hstat">
+        <span class="hstat-val" id="stat-people" style="color:var(--accent)">—</span>
+        <span class="hstat-label">People Tracked</span>
+      </div>
+      <div class="hstat">
+        <span class="hstat-val" id="stat-danger" style="color:var(--danger)">—</span>
+        <span class="hstat-label">Critical Zones</span>
+      </div>
+      <div class="hstat">
+        <span class="hstat-val" id="stat-warn" style="color:var(--warn)">—</span>
+        <span class="hstat-label">Warning Zones</span>
+      </div>
+      <div class="hstat">
+        <span class="hstat-val" id="stat-alerts" style="color:var(--text)">—</span>
+        <span class="hstat-label">Active Alerts</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main>
+
+    <!-- Station Map -->
+    <div class="map-card">
+      <div class="card-header">
+        <span class="card-title">New Delhi Railway Station — Zone Map</span>
+        <span style="font-size:10px;color:var(--dim);font-family:var(--mono)" id="map-updated">—</span>
+      </div>
+      <svg id="station-map" viewBox="0 0 720 480" xmlns="http://www.w3.org/2000/svg">
+
+        <!-- Background grid -->
+        <defs>
+          <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse">
+            <path d="M 30 0 L 0 0 0 30" fill="none" stroke="#1e3255" stroke-width="0.5"/>
+          </pattern>
+          <!-- Glow filter for danger zones -->
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="4" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+
+        <rect width="720" height="480" fill="#111f38"/>
+        <rect width="720" height="480" fill="url(#grid)"/>
+
+        <!-- Station boundary -->
+        <rect x="60" y="80" width="600" height="340" rx="8" fill="none" stroke="#1e3255" stroke-width="2" stroke-dasharray="8,4"/>
+        <text x="360" y="70" fill="#2a4470" font-family="Space Grotesk" font-size="11" text-anchor="middle" font-weight="600" letter-spacing="3">NEW DELHI RAILWAY STATION</text>
+
+        <!-- Track lines (decorative) -->
+        <line x1="60" y1="145" x2="120" y2="145" stroke="#1e3255" stroke-width="8" stroke-linecap="round"/>
+        <line x1="60" y1="245" x2="120" y2="245" stroke="#1e3255" stroke-width="8" stroke-linecap="round"/>
+        <line x1="60" y1="345" x2="120" y2="345" stroke="#1e3255" stroke-width="8" stroke-linecap="round"/>
+
+        <!-- Track labels -->
+        <text x="40" y="149" fill="#2a4470" font-family="JetBrains Mono" font-size="9" text-anchor="middle">TRK 1</text>
+        <text x="40" y="249" fill="#2a4470" font-family="JetBrains Mono" font-size="9" text-anchor="middle">TRK 2</text>
+        <text x="40" y="349" fill="#2a4470" font-family="JetBrains Mono" font-size="9" text-anchor="middle">TRK 3</text>
+
+        <!-- Zone: P1 -->
+        <g id="map-zone-P1">
+          <rect x="120" y="115" width="180" height="60" rx="5" fill="#162540" stroke="#1e3255" stroke-width="1.5"/>
+          <rect id="zone-fill-P1" x="120" y="115" width="0" height="60" rx="5" fill="#27AE60" opacity="0.25"/>
+          <rect x="120" y="115" width="4" height="60" rx="2" fill="#27AE60" id="zone-stripe-P1"/>
+          <text x="210" y="138" fill="#8099bb" font-family="Space Grotesk" font-size="9" text-anchor="middle" font-weight="600" letter-spacing="1">PLATFORM 1 · GATE A</text>
+          <text id="zone-count-P1" x="210" y="162" fill="#27AE60" font-family="JetBrains Mono" font-size="20" text-anchor="middle" font-weight="600">—</text>
+          <text id="zone-pct-P1" x="210" y="173" fill="#8099bb" font-family="JetBrains Mono" font-size="8" text-anchor="middle">0%</text>
+        </g>
+
+        <!-- Zone: P2 -->
+        <g id="map-zone-P2">
+          <rect x="120" y="215" width="180" height="60" rx="5" fill="#162540" stroke="#1e3255" stroke-width="1.5"/>
+          <rect id="zone-fill-P2" x="120" y="215" width="0" height="60" rx="5" fill="#27AE60" opacity="0.25"/>
+          <rect x="120" y="215" width="4" height="60" rx="2" fill="#27AE60" id="zone-stripe-P2"/>
+          <text x="210" y="238" fill="#8099bb" font-family="Space Grotesk" font-size="9" text-anchor="middle" font-weight="600" letter-spacing="1">PLATFORM 2 · GATE B</text>
+          <text id="zone-count-P2" x="210" y="262" fill="#27AE60" font-family="JetBrains Mono" font-size="20" text-anchor="middle" font-weight="600">—</text>
+          <text id="zone-pct-P2" x="210" y="273" fill="#8099bb" font-family="JetBrains Mono" font-size="8" text-anchor="middle">0%</text>
+        </g>
+
+        <!-- Zone: P3 -->
+        <g id="map-zone-P3">
+          <rect x="120" y="315" width="180" height="60" rx="5" fill="#162540" stroke="#1e3255" stroke-width="1.5"/>
+          <rect id="zone-fill-P3" x="120" y="315" width="0" height="60" rx="5" fill="#27AE60" opacity="0.25"/>
+          <rect x="120" y="315" width="4" height="60" rx="2" fill="#27AE60" id="zone-stripe-P3"/>
+          <text x="210" y="338" fill="#8099bb" font-family="Space Grotesk" font-size="9" text-anchor="middle" font-weight="600" letter-spacing="1">PLATFORM 3 · GATE C</text>
+          <text id="zone-count-P3" x="210" y="362" fill="#27AE60" font-family="JetBrains Mono" font-size="20" text-anchor="middle" font-weight="600">—</text>
+          <text id="zone-pct-P3" x="210" y="373" fill="#8099bb" font-family="JetBrains Mono" font-size="8" text-anchor="middle">0%</text>
+        </g>
+
+        <!-- Zone: C1 Concourse -->
+        <g id="map-zone-C1">
+          <rect x="330" y="165" width="140" height="150" rx="5" fill="#162540" stroke="#1e3255" stroke-width="1.5"/>
+          <rect id="zone-fill-C1" x="330" y="165" width="0" height="150" rx="5" fill="#27AE60" opacity="0.25"/>
+          <rect x="330" y="165" width="4" height="150" rx="2" fill="#27AE60" id="zone-stripe-C1"/>
+          <text x="400" y="220" fill="#8099bb" font-family="Space Grotesk" font-size="9" text-anchor="middle" font-weight="600" letter-spacing="1">CENTRAL</text>
+          <text x="400" y="232" fill="#8099bb" font-family="Space Grotesk" font-size="9" text-anchor="middle" font-weight="600" letter-spacing="1">CONCOURSE</text>
+          <text id="zone-count-C1" x="400" y="265" fill="#27AE60" font-family="JetBrains Mono" font-size="24" text-anchor="middle" font-weight="600">—</text>
+          <text id="zone-pct-C1" x="400" y="278" fill="#8099bb" font-family="JetBrains Mono" font-size="8" text-anchor="middle">0%</text>
+        </g>
+
+        <!-- Zone: E1 Exit -->
+        <g id="map-zone-E1">
+          <rect x="510" y="185" width="130" height="110" rx="5" fill="#162540" stroke="#1e3255" stroke-width="1.5"/>
+          <rect id="zone-fill-E1" x="510" y="185" width="0" height="110" rx="5" fill="#27AE60" opacity="0.25"/>
+          <rect x="510" y="185" width="4" height="110" rx="2" fill="#27AE60" id="zone-stripe-E1"/>
+          <text x="575" y="228" fill="#8099bb" font-family="Space Grotesk" font-size="9" text-anchor="middle" font-weight="600" letter-spacing="1">EAST EXIT</text>
+          <text x="575" y="240" fill="#8099bb" font-family="Space Grotesk" font-size="9" text-anchor="middle" font-weight="600" letter-spacing="1">TICKETING</text>
+          <text id="zone-count-E1" x="575" y="268" fill="#27AE60" font-family="JetBrains Mono" font-size="20" text-anchor="middle" font-weight="600">—</text>
+          <text id="zone-pct-E1" x="575" y="279" fill="#8099bb" font-family="JetBrains Mono" font-size="8" text-anchor="middle">0%</text>
+        </g>
+
+        <!-- Connecting corridors -->
+        <line x1="300" y1="145" x2="330" y2="210" stroke="#1e3255" stroke-width="10"/>
+        <line x1="300" y1="245" x2="330" y2="240" stroke="#1e3255" stroke-width="10"/>
+        <line x1="300" y1="345" x2="330" y2="270" stroke="#1e3255" stroke-width="10"/>
+        <line x1="470" y1="240" x2="510" y2="240" stroke="#1e3255" stroke-width="10"/>
+
+        <!-- Legend -->
+        <g transform="translate(580, 390)">
+          <rect x="0" y="0" width="100" height="70" rx="4" fill="#0B1628" stroke="#1e3255"/>
+          <circle cx="12" cy="14" r="4" fill="#27AE60"/>
+          <text x="22" y="18" fill="#8099bb" font-family="Space Grotesk" font-size="9">Safe (&lt;60%)</text>
+          <circle cx="12" cy="30" r="4" fill="#F5A623"/>
+          <text x="22" y="34" fill="#8099bb" font-family="Space Grotesk" font-size="9">Warning (60–80%)</text>
+          <circle cx="12" cy="46" r="4" fill="#C0392B"/>
+          <text x="22" y="50" fill="#8099bb" font-family="Space Grotesk" font-size="9">Critical (&gt;80%)</text>
+          <text x="50" y="64" fill="#2a4470" font-family="JetBrains Mono" font-size="7" text-anchor="middle">SmartGuard v1.0</text>
+        </g>
+
+        <!-- Sensor node indicators -->
+        <circle id="sensor-P1" cx="290" cy="145" r="5" fill="#27AE60" opacity="0.8">
+          <animate attributeName="r" values="4;7;4" dur="2s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0.8;0.3;0.8" dur="2s" repeatCount="indefinite"/>
+        </circle>
+        <circle id="sensor-P2" cx="290" cy="245" r="5" fill="#27AE60" opacity="0.8">
+          <animate attributeName="r" values="4;7;4" dur="2.4s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0.8;0.3;0.8" dur="2.4s" repeatCount="indefinite"/>
+        </circle>
+        <circle id="sensor-P3" cx="290" cy="345" r="5" fill="#27AE60" opacity="0.8">
+          <animate attributeName="r" values="4;7;4" dur="1.8s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0.8;0.3;0.8" dur="1.8s" repeatCount="indefinite"/>
+        </circle>
+        <circle id="sensor-C1" cx="462" cy="240" r="5" fill="#27AE60" opacity="0.8">
+          <animate attributeName="r" values="4;7;4" dur="2.2s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0.8;0.3;0.8" dur="2.2s" repeatCount="indefinite"/>
+        </circle>
+        <circle id="sensor-E1" cx="634" cy="240" r="5" fill="#27AE60" opacity="0.8">
+          <animate attributeName="r" values="4;7;4" dur="1.6s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0.8;0.3;0.8" dur="1.6s" repeatCount="indefinite"/>
+        </circle>
+      </svg>
+    </div>
+
+    <!-- Zone Cards -->
+    <div class="zones-grid" id="zones-grid"></div>
+
+    <!-- History Chart -->
+    <div class="chart-card">
+      <div class="card-header">
+        <span class="card-title">Crowd Density — 60-min History & Trend</span>
+        <select class="zone-select" id="chart-zone-select">
+          <option value="C1">Central Concourse</option>
+          <option value="P1">Platform 1</option>
+          <option value="P2">Platform 2</option>
+          <option value="P3">Platform 3</option>
+          <option value="E1">East Exit</option>
+        </select>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="history-chart"></canvas>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- SIDEBAR -->
+  <aside>
+    <div class="sidebar-title">
+      Alert Feed
+      <span class="alert-count-badge" id="alert-badge">0</span>
+    </div>
+    <div class="alerts-feed" id="alerts-feed">
+      <div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">Loading alerts…</div>
+    </div>
+
+    <!-- Kavach integration badge -->
+    <div class="kavach-badge">
+      <div class="kavach-label">⬡ Kavach 4.0 Compatible</div>
+      <div class="kavach-text">
+        SmartGuard crowd data is formatted for integration with Indian Railways Kavach ATP API.
+        Kavach handles collision prevention — SmartGuard handles platform crush.
+      </div>
+    </div>
+  </aside>
+
+</div>
+
+<script>
+  const API = "http://localhost:8000";  // Change to your deployed backend URL
+
+  const COLOR = { safe: "#27AE60", warning: "#F5A623", danger: "#C0392B" };
+
+  // ── History Chart ──────────────────────────────────────────────────────────
+  let histChart = null;
+  let currentZone = "C1";
+
+  const ctx = document.getElementById("history-chart").getContext("2d");
+
+  function initChart() {
+    histChart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: "People Count",
+            data: [],
+            borderColor: "#3B82F6",
+            backgroundColor: "rgba(59,130,246,0.08)",
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.4,
+            fill: true,
+          },
+          {
+            label: "Warning Threshold",
+            data: [],
+            borderColor: "rgba(245,166,35,0.5)",
+            borderWidth: 1,
+            borderDash: [6, 3],
+            pointRadius: 0,
+            fill: false,
+          },
+          {
+            label: "Critical Threshold",
+            data: [],
+            borderColor: "rgba(192,57,43,0.5)",
+            borderWidth: 1,
+            borderDash: [6, 3],
+            pointRadius: 0,
+            fill: false,
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: {
+            labels: { color: "#8099bb", font: { family: "Space Grotesk", size: 11 }, boxWidth: 12 }
+          },
+          tooltip: {
+            backgroundColor: "#162540",
+            borderColor: "#1e3255",
+            borderWidth: 1,
+            titleColor: "#e8edf4",
+            bodyColor: "#8099bb",
+            titleFont: { family: "JetBrains Mono" },
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: "#2a4470", font: { family: "JetBrains Mono", size: 10 }, maxTicksLimit: 8 },
+            grid: { color: "#1e3255" }
+          },
+          y: {
+            ticks: { color: "#2a4470", font: { family: "JetBrains Mono", size: 10 } },
+            grid: { color: "#1e3255" },
+            min: 0,
+          }
+        }
+      }
+    });
+  }
+
+  async function fetchHistory(zoneId) {
+    try {
+      const res = await fetch(`${API}/history/${zoneId}?minutes=60`);
+      const data = await res.json();
+      const zonesRes = await fetch(`${API}/zones`);
+      const zones = await zonesRes.json();
+      const cap = zones[zoneId]?.capacity || 200;
+
+      histChart.data.labels = data.map(d => d.label);
+      histChart.data.datasets[0].data = data.map(d => d.count);
+      histChart.data.datasets[1].data = data.map(() => Math.round(cap * 0.60));
+      histChart.data.datasets[2].data = data.map(() => Math.round(cap * 0.80));
+      histChart.update("none");
+    } catch(e) {
+      console.error("history fetch failed", e);
+    }
+  }
+
+  // ── Zone Map Update ────────────────────────────────────────────────────────
+  function updateMapZone(zid, data) {
+    const color = COLOR[data.level];
+    const pct   = Math.round(data.ratio * 100);
+    const maxW  = { P1:180, P2:180, P3:180, C1:140, E1:130 }[zid] || 140;
+
+    // fill rect
+    const fill = document.getElementById(`zone-fill-${zid}`);
+    if (fill) fill.setAttribute("width", Math.round(data.ratio * maxW));
+
+    // color fill tint
+    if (fill) fill.setAttribute("fill", color);
+
+    // stripe
+    const stripe = document.getElementById(`zone-stripe-${zid}`);
+    if (stripe) stripe.setAttribute("fill", color);
+
+    // count text
+    const countEl = document.getElementById(`zone-count-${zid}`);
+    if (countEl) { countEl.textContent = data.count; countEl.setAttribute("fill", color); }
+
+    // pct text
+    const pctEl = document.getElementById(`zone-pct-${zid}`);
+    if (pctEl) pctEl.textContent = `${pct}% · cap ${data.capacity}`;
+
+    // sensor dot
+    const sensor = document.getElementById(`sensor-${zid}`);
+    if (sensor) sensor.setAttribute("fill", color);
+  }
+
+  // ── Zone Cards ─────────────────────────────────────────────────────────────
+  function renderZoneCards(zones) {
+    const grid = document.getElementById("zones-grid");
+    grid.innerHTML = "";
+
+    for (const [zid, z] of Object.entries(zones)) {
+      const pct = Math.round(z.ratio * 100);
+      const etaHtml = z.eta_min !== null && z.eta_min !== undefined
+        ? `<div class="zone-eta">⚠ Breach in ~${z.eta_min} min</div>`
+        : "";
+
+      const card = document.createElement("div");
+      card.className = `zone-card ${z.level}`;
+      card.innerHTML = `
+        <div class="zone-name">${z.name}</div>
+        <div class="zone-count">${z.count}</div>
+        <div class="zone-capacity">of ${z.capacity} capacity · ${pct}%</div>
+        <div class="zone-bar-wrap"><div class="zone-bar" style="width:${Math.min(pct,100)}%"></div></div>
+        ${etaHtml}
+      `;
+      grid.appendChild(card);
+    }
+  }
+
+  // ── Summary Stats ──────────────────────────────────────────────────────────
+  async function fetchSummary() {
+    try {
+      const res  = await fetch(`${API}/stats/summary`);
+      const data = await res.json();
+      document.getElementById("stat-people").textContent  = data.total_people;
+      document.getElementById("stat-danger").textContent  = data.danger_zones;
+      document.getElementById("stat-warn").textContent    = data.warning_zones;
+      document.getElementById("stat-alerts").textContent  = data.active_alerts;
+    } catch(e) {}
+  }
+
+  // ── Alerts Feed ───────────────────────────────────────────────────────────
+  let lastAlertId = 0;
+
+  async function fetchAlerts() {
+    try {
+      const res  = await fetch(`${API}/alerts?limit=30`);
+      const data = await res.json();
+
+      const feed  = document.getElementById("alerts-feed");
+      const badge = document.getElementById("alert-badge");
+
+      const newAlerts = data.filter(a => a.id > lastAlertId);
+      if (newAlerts.length > 0) lastAlertId = data[0]?.id || 0;
+
+      badge.textContent = data.filter(a => !a.resolved).length;
+
+      if (data.length === 0) {
+        feed.innerHTML = `<div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">No alerts — all zones safe</div>`;
+        return;
+      }
+
+      // prepend new alerts
+      for (const alert of newAlerts.reverse()) {
+        const el = document.createElement("div");
+        el.className = `alert-item ${alert.level}`;
+        el.innerHTML = `
+          <div class="alert-meta">
+            <span class="alert-zone">${alert.zone_id} · ${alert.level.toUpperCase()}</span>
+            <span class="alert-time">${alert.time}</span>
+          </div>
+          <div class="alert-msg">${alert.message}</div>
+        `;
+        feed.prepend(el);
+      }
+
+      // trim old items
+      while (feed.children.length > 30) feed.removeChild(feed.lastChild);
+    } catch(e) {}
+  }
+
+  // ── Zones Live ─────────────────────────────────────────────────────────────
+  async function fetchZones() {
+    try {
+      const res   = await fetch(`${API}/zones`);
+      const zones = await res.json();
+
+      renderZoneCards(zones);
+
+      for (const [zid, z] of Object.entries(zones)) {
+        updateMapZone(zid, z);
+      }
+
+      document.getElementById("map-updated").textContent =
+        "Updated " + new Date().toLocaleTimeString("en-IN");
+    } catch(e) {
+      console.error("zones fetch failed", e);
+    }
+  }
+
+  // ── Zone Select ────────────────────────────────────────────────────────────
+  document.getElementById("chart-zone-select").addEventListener("change", (e) => {
+    currentZone = e.target.value;
+    fetchHistory(currentZone);
+  });
+
+  // ── Init & Poll ────────────────────────────────────────────────────────────
+  initChart();
+
+  async function tick() {
+    await Promise.all([fetchZones(), fetchAlerts(), fetchSummary()]);
+  }
+
+  async function tickChart() {
+    await fetchHistory(currentZone);
+  }
+
+  tick();
+  tickChart();
+  setInterval(tick, 5000);        // live data: every 5s
+  setInterval(tickChart, 15000);  // chart refresh: every 15s
+</script>
+</body>
+</html>
